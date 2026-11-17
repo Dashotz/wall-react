@@ -1,3 +1,21 @@
+export interface SharedPostEmbed {
+  id: string;
+  author_name: string;
+  content: string;
+  image_url: string | null;
+  created_at: string;
+}
+
+export interface WallComment {
+  id: string;
+  post_id: string;
+  author_name: string;
+  content: string;
+  created_at: string;
+  likes: number;
+  liked?: boolean;
+}
+
 export interface WallPost {
   id: string;
   author_name: string;
@@ -5,6 +23,7 @@ export interface WallPost {
   image_url: string | null;
   created_at: string;
   optimistic?: boolean;
+  shared_post?: SharedPostEmbed | null;
 }
 
 export interface ProfileInfo {
@@ -27,4 +46,11 @@ export interface CreatePostInput {
   content: string;
   photoFile?: File | null;
 }
+
+export interface SharePostInput {
+  author_name?: string;
+  comment?: string;
+  originalPost: WallPost;
+}
+
 

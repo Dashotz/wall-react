@@ -3,14 +3,35 @@
 import { MessageSquarePlus } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { WallPostItem } from "@/components/wall/wall-post-item";
-import type { WallPost } from "@/types/wall";
+import type { SharePostInput, WallComment, WallPost } from "@/types/wall";
 
 interface WallFeedProps {
   posts: WallPost[];
   isLoading: boolean;
+  currentAuthor: string;
+  shareCounts: Record<string, number>;
+  getCommentsForPost: (post: WallPost) => WallComment[];
+  onAddComment: (
+    post: WallPost,
+    authorName: string,
+    content: string
+  ) => WallComment | null;
+  onDeleteComment: (post: WallPost, commentId: string) => void;
+  onToggleCommentLike: (post: WallPost, commentId: string) => void;
+  onSharePost: (input: SharePostInput) => Promise<boolean>;
 }
 
-export function WallFeed({ posts, isLoading }: WallFeedProps) {
+export function WallFeed({
+  posts,
+  isLoading,
+  currentAuthor,
+  shareCounts,
+  getCommentsForPost,
+  onAddComment,
+  onDeleteComment,
+  onToggleCommentLike,
+  onSharePost,
+}: WallFeedProps) {
   if (isLoading) {
     return (
       <div className="mt-4 space-y-3.5" aria-busy="true">
@@ -51,7 +72,17 @@ export function WallFeed({ posts, isLoading }: WallFeedProps) {
     <section aria-label="Wall Posts Feed" className="mt-4">
       <div className="space-y-3.5">
         {posts.map((post) => (
-          <WallPostItem key={post.id} post={post} />
+          <WallPostItem
+            key={post.id}
+            post={post}
+            currentAuthor={currentAuthor}
+            comments={getCommentsForPost(post)}
+            shareCount={shareCounts[post.id] ?? 0}
+            onAddComment={onAddComment}
+            onDeleteComment={onDeleteComment}
+            onToggleCommentLike={onToggleCommentLike}
+            onSharePost={onSharePost}
+          />
         ))}
       </div>
     </section>

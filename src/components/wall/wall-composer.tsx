@@ -17,11 +17,25 @@ import type { CreatePostInput } from "@/types/wall";
 interface WallComposerProps {
   onShare: (input: CreatePostInput) => Promise<boolean>;
   isSubmitting: boolean;
+  authorName?: string;
+  onAuthorChange?: (name: string) => void;
 }
 
-export function WallComposer({ onShare, isSubmitting }: WallComposerProps) {
+export function WallComposer({
+  onShare,
+  isSubmitting,
+  authorName: controlledAuthor,
+  onAuthorChange,
+}: WallComposerProps) {
   const [content, setContent] = useState<string>("");
-  const [authorName, setAuthorName] = useState<string>(DEFAULT_PROFILE.name);
+  const [internalAuthorName, setInternalAuthorName] = useState<string>(
+    DEFAULT_PROFILE.name
+  );
+  const authorName = controlledAuthor ?? internalAuthorName;
+  const setAuthorName = (name: string) => {
+    setInternalAuthorName(name);
+    onAuthorChange?.(name);
+  };
   const [isEditingAuthor, setIsEditingAuthor] = useState<boolean>(false);
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);

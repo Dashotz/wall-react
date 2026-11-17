@@ -1,4 +1,4 @@
-import type { ProfileInfo, WallPost } from "@/types/wall";
+import type { ProfileInfo, WallComment, WallPost } from "@/types/wall";
 
 export const MAX_POST_LENGTH = 280;
 export const MAX_PHOTO_SIZE_BYTES = 5 * 1024 * 1024; // 5MB
@@ -13,6 +13,8 @@ export const ALLOWED_IMAGE_TYPES = [
 export const SUPABASE_TABLE_NAME = "posts";
 export const SUPABASE_STORAGE_BUCKET = "wall-photos";
 export const LOCAL_STORAGE_KEY = "wall_react_posts_v3";
+export const COMMENTS_STORAGE_KEY = "wall_react_comments_v1";
+export const SHARE_COUNTS_STORAGE_KEY = "wall_react_share_counts_v1";
 export const BROADCAST_CHANNEL_NAME = "wall_react_realtime_sync";
 
 export const DEFAULT_PROFILE: ProfileInfo = {
@@ -139,3 +141,48 @@ export function getInitialSeedPosts(): WallPost[] {
     },
   ];
 }
+
+export function getDefaultCommentsForPost(post: WallPost): WallComment[] {
+  const postTime = new Date(post.created_at).getTime() || Date.now();
+  const min = 60 * 1000;
+
+  if (
+    post.id === "seed-1" ||
+    post.content.includes("Late-night ship session")
+  ) {
+    return [
+      {
+        id: `default-c1-${post.id}`,
+        post_id: post.id,
+        author_name: "Maya Lin",
+        content: "Congrats on shipping! The realtime sync is super fast.",
+        created_at: new Date(postTime + 2 * min).toISOString(),
+        likes: 2,
+      },
+      {
+        id: `default-c2-${post.id}`,
+        post_id: post.id,
+        author_name: "Marcus Vance",
+        content: "Classic 2016 Facebook vibes, love the layout!",
+        created_at: new Date(postTime + 5 * min).toISOString(),
+        likes: 1,
+      },
+    ];
+  }
+
+  if (post.id === "seed-2" || post.content.includes("Golden hour walk")) {
+    return [
+      {
+        id: `default-c3-${post.id}`,
+        post_id: post.id,
+        author_name: "Elena Rostova",
+        content: "Incredible view! Well deserved break.",
+        created_at: new Date(postTime + 4 * min).toISOString(),
+        likes: 3,
+      },
+    ];
+  }
+
+  return [];
+}
+

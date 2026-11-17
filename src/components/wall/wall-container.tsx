@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { ProfileSidebar } from "@/components/wall/profile-sidebar";
 import { RightSidebar } from "@/components/wall/right-sidebar";
 import { WallComposer } from "@/components/wall/wall-composer";
@@ -9,11 +10,20 @@ import { useWallPosts } from "@/hooks/use-wall-posts";
 import { DEFAULT_PROFILE } from "@/lib/constants";
 
 export function WallContainer() {
+  const [currentAuthor, setCurrentAuthor] = useState<string>(
+    DEFAULT_PROFILE.name
+  );
   const {
     posts,
     isLoading,
     isSubmitting,
     createPost,
+    sharePost,
+    shareCounts,
+    getCommentsForPost,
+    addComment,
+    deleteComment,
+    toggleCommentLike,
     refreshPosts,
   } = useWallPosts();
 
@@ -29,8 +39,23 @@ export function WallContainer() {
 
         {/* Center Column: Wall Composer & Dynamic Feed */}
         <main className="flex-1 min-w-0">
-          <WallComposer onShare={createPost} isSubmitting={isSubmitting} />
-          <WallFeed posts={posts} isLoading={isLoading} />
+          <WallComposer
+            onShare={createPost}
+            isSubmitting={isSubmitting}
+            authorName={currentAuthor}
+            onAuthorChange={setCurrentAuthor}
+          />
+          <WallFeed
+            posts={posts}
+            isLoading={isLoading}
+            currentAuthor={currentAuthor}
+            shareCounts={shareCounts}
+            getCommentsForPost={getCommentsForPost}
+            onAddComment={addComment}
+            onDeleteComment={deleteComment}
+            onToggleCommentLike={toggleCommentLike}
+            onSharePost={sharePost}
+          />
         </main>
 
         {/* Right Sidebar: Dragon City Featured Game, Game Requests, Marketplace & Online Contacts */}

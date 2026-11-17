@@ -4,10 +4,13 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
   BROADCAST_CHANNEL_NAME,
+  COMMENTS_STORAGE_KEY,
   DEFAULT_PROFILE,
+  getDefaultCommentsForPost,
   getInitialSeedPosts,
   LOCAL_STORAGE_KEY,
   MAX_POST_LENGTH,
+  SHARE_COUNTS_STORAGE_KEY,
   SUPABASE_TABLE_NAME,
 } from "@/lib/constants";
 import { getSupabaseClient, isSupabaseConfigured } from "@/lib/supabase/client";
@@ -15,12 +18,19 @@ import { uploadWallPhoto } from "@/lib/supabase/storage";
 import type {
   ConnectionStatus,
   CreatePostInput,
+  SharedPostEmbed,
+  SharePostInput,
+  WallComment,
   WallPost,
 } from "@/types/wall";
 
+const SHARE_CONTENT_REGEX =
+  /^(?:([\s\S]*?)\n\n)?🔄 Shared ([^\n]+?)'s post:\n"([\s\S]*)"$/;
+
 /**
  * Normalizes a database row from Supabase into a strict WallPost object,
- * gracefully handling common column naming variations (`content`, `message`, `body`).
+ * gracefully handling common column naming variations (`content`, `message`, `body`)
+ * and reconstructing shared post embeds.
  */
 function normalizePostRow(row: Record<string, unknown>): WallPost {
   const rawAuthor = String(
@@ -30,22 +40,63 @@ function normalizePostRow(row: Record<string, unknown>): WallPost {
     rawAuthor === "Greg Wientjes" ? DEFAULT_PROFILE.name : rawAuthor;
 
   const rawContent = String(row.content ?? row.message ?? row.body ?? "");
+  const rowImageUrl =
+    typeof row.image_url === "string" && row.image_url.trim().length > 0
+      ? row.image_url
+      : typeof row.photo_url === "string" && row.photo_url.trim().length > 0
+      ? row.photo_url
+      : null;
+  const rowCreatedAt =
+    typeof row.created_at === "string"
+      ? row.created_at
+      : new Date().toISOString();
+  const id = String(row.id ?? crypto.randomUUID());
+
+  if (row.shared_post && typeof row.shared_post === "object") {
+    return {
+      id,
+      author_name,
+      content: rawContent.replace(/\bGreg\b/g, "Alex"),
+      image_url: rowImageUrl,
+      created_at: rowCreatedAt,
+      shared_post: row.shared_post as SharedPostEmbed,
+    };
+  }
+
+  const shareMatch = rawContent.match(SHARE_CONTENT_REGEX);
+  if (shareMatch) {
+    const userComment = (shareMatch[1] ?? "").replace(/\bGreg\b/g, "Alex");
+    const rawSharedAuthor = shareMatch[2];
+    const sharedAuthor =
+      rawSharedAuthor === "Greg Wientjes"
+        ? DEFAULT_PROFILE.name
+        : rawSharedAuthor;
+    const sharedContent = (shareMatch[3] ?? "").replace(/\bGreg\b/g, "Alex");
+
+    return {
+      id,
+      author_name,
+      content: userComment,
+      image_url: null,
+      created_at: rowCreatedAt,
+      shared_post: {
+        id: `shared-${id}`,
+        author_name: sharedAuthor,
+        content: sharedContent,
+        image_url: rowImageUrl,
+        created_at: rowCreatedAt,
+      },
+    };
+  }
+
   const content = rawContent.replace(/\bGreg\b/g, "Alex");
 
   return {
-    id: String(row.id ?? crypto.randomUUID()),
+    id,
     author_name,
     content,
-    image_url:
-      typeof row.image_url === "string" && row.image_url.trim().length > 0
-        ? row.image_url
-        : typeof row.photo_url === "string" && row.photo_url.trim().length > 0
-        ? row.photo_url
-        : null,
-    created_at:
-      typeof row.created_at === "string"
-        ? row.created_at
-        : new Date().toISOString(),
+    image_url: rowImageUrl,
+    created_at: rowCreatedAt,
   };
 }
 
@@ -82,8 +133,60 @@ function saveLocalPosts(posts: WallPost[]) {
   }
 }
 
+function loadLocalComments(): Record<string, WallComment[]> {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = window.localStorage.getItem(COMMENTS_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveLocalComments(commentsMap: Record<string, WallComment[]>) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(
+      COMMENTS_STORAGE_KEY,
+      JSON.stringify(commentsMap)
+    );
+  } catch {
+    // Ignore storage quota errors
+  }
+}
+
+function loadLocalShareCounts(): Record<string, number> {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = window.localStorage.getItem(SHARE_COUNTS_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveLocalShareCounts(counts: Record<string, number>) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(
+      SHARE_COUNTS_STORAGE_KEY,
+      JSON.stringify(counts)
+    );
+  } catch {
+    // Ignore storage quota errors
+  }
+}
+
 export function useWallPosts() {
   const [posts, setPosts] = useState<WallPost[]>([]);
+  const [commentsByPost, setCommentsByPost] = useState<
+    Record<string, WallComment[]>
+  >({});
+  const [shareCounts, setShareCounts] = useState<Record<string, number>>({});
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [connectionStatus, setConnectionStatus] =
@@ -135,6 +238,8 @@ export function useWallPosts() {
   }, []);
 
   useEffect(() => {
+    setCommentsByPost(loadLocalComments());
+    setShareCounts(loadLocalShareCounts());
     fetchPosts();
 
     // Set up cross-tab BroadcastChannel for instant multi-tab sync
@@ -152,6 +257,10 @@ export function useWallPosts() {
             return updated;
           });
           setRealtimeEventsCount((c) => c + 1);
+        } else if (payload?.type === "COMMENTS_UPDATED" && payload.commentsMap) {
+          setCommentsByPost(payload.commentsMap as Record<string, WallComment[]>);
+        } else if (payload?.type === "SHARE_COUNTS_UPDATED" && payload.counts) {
+          setShareCounts(payload.counts as Record<string, number>);
         }
       };
     }
@@ -337,6 +446,226 @@ export function useWallPosts() {
     [connectionStatus]
   );
 
+  const getCommentsForPost = useCallback(
+    (post: WallPost): WallComment[] => {
+      if (Object.prototype.hasOwnProperty.call(commentsByPost, post.id)) {
+        return commentsByPost[post.id] ?? [];
+      }
+      return getDefaultCommentsForPost(post);
+    },
+    [commentsByPost]
+  );
+
+  const addComment = useCallback(
+    (post: WallPost, authorName: string, content: string): WallComment | null => {
+      const trimmed = content.trim();
+      if (!trimmed) {
+        toast.error("Write a comment before posting.");
+        return null;
+      }
+
+      const finalAuthor =
+        authorName && authorName.trim().length > 0
+          ? authorName.trim()
+          : DEFAULT_PROFILE.name;
+
+      const newComment: WallComment = {
+        id: crypto.randomUUID(),
+        post_id: post.id,
+        author_name: finalAuthor,
+        content: trimmed,
+        created_at: new Date().toISOString(),
+        likes: 0,
+        liked: false,
+      };
+
+      setCommentsByPost((prev) => {
+        const existing = Object.prototype.hasOwnProperty.call(prev, post.id)
+          ? prev[post.id] ?? []
+          : getDefaultCommentsForPost(post);
+        const nextMap = {
+          ...prev,
+          [post.id]: [...existing, newComment],
+        };
+        saveLocalComments(nextMap);
+        broadcastRef.current?.postMessage({
+          type: "COMMENTS_UPDATED",
+          commentsMap: nextMap,
+        });
+        return nextMap;
+      });
+
+      return newComment;
+    },
+    []
+  );
+
+  const deleteComment = useCallback((post: WallPost, commentId: string) => {
+    setCommentsByPost((prev) => {
+      const existing = Object.prototype.hasOwnProperty.call(prev, post.id)
+        ? prev[post.id] ?? []
+        : getDefaultCommentsForPost(post);
+      const nextMap = {
+        ...prev,
+        [post.id]: existing.filter((c) => c.id !== commentId),
+      };
+      saveLocalComments(nextMap);
+      broadcastRef.current?.postMessage({
+        type: "COMMENTS_UPDATED",
+        commentsMap: nextMap,
+      });
+      return nextMap;
+    });
+  }, []);
+
+  const toggleCommentLike = useCallback((post: WallPost, commentId: string) => {
+    setCommentsByPost((prev) => {
+      const existing = Object.prototype.hasOwnProperty.call(prev, post.id)
+        ? prev[post.id] ?? []
+        : getDefaultCommentsForPost(post);
+      const nextMap = {
+        ...prev,
+        [post.id]: existing.map((c) => {
+          if (c.id !== commentId) return c;
+          const nextLiked = !c.liked;
+          return {
+            ...c,
+            liked: nextLiked,
+            likes: Math.max(0, (c.likes ?? 0) + (nextLiked ? 1 : -1)),
+          };
+        }),
+      };
+      saveLocalComments(nextMap);
+      broadcastRef.current?.postMessage({
+        type: "COMMENTS_UPDATED",
+        commentsMap: nextMap,
+      });
+      return nextMap;
+    });
+  }, []);
+
+  const sharePost = useCallback(
+    async ({
+      author_name,
+      comment,
+      originalPost,
+    }: SharePostInput): Promise<boolean> => {
+      const finalAuthor =
+        author_name && author_name.trim().length > 0
+          ? author_name.trim()
+          : DEFAULT_PROFILE.name;
+      const trimmedComment = (comment ?? "").trim();
+
+      const rootPost: SharedPostEmbed = originalPost.shared_post ?? {
+        id: originalPost.id,
+        author_name: originalPost.author_name,
+        content: originalPost.content,
+        image_url: originalPost.image_url,
+        created_at: originalPost.created_at,
+      };
+
+      const serializedContent = trimmedComment
+        ? `${trimmedComment}\n\n🔄 Shared ${rootPost.author_name}'s post:\n"${rootPost.content}"`
+        : `🔄 Shared ${rootPost.author_name}'s post:\n"${rootPost.content}"`;
+
+      const tempId = `optimistic-share-${Date.now()}`;
+      const optimisticPost: WallPost = {
+        id: tempId,
+        author_name: finalAuthor,
+        content: trimmedComment,
+        image_url: null,
+        created_at: new Date().toISOString(),
+        optimistic: true,
+        shared_post: rootPost,
+      };
+
+      setPosts((prev) => [optimisticPost, ...prev]);
+
+      // Increment share count for the original post
+      setShareCounts((prev) => {
+        const nextCounts = {
+          ...prev,
+          [originalPost.id]: (prev[originalPost.id] ?? 0) + 1,
+        };
+        saveLocalShareCounts(nextCounts);
+        broadcastRef.current?.postMessage({
+          type: "SHARE_COUNTS_UPDATED",
+          counts: nextCounts,
+        });
+        return nextCounts;
+      });
+
+      try {
+        const supabase = getSupabaseClient();
+
+        if (supabase && connectionStatus !== "local-fallback") {
+          const { data, error } = await supabase
+            .from(SUPABASE_TABLE_NAME)
+            .insert({
+              author_name: finalAuthor,
+              content: serializedContent,
+              image_url: rootPost.image_url,
+            })
+            .select("*")
+            .single();
+
+          if (error) {
+            throw new Error(error.message);
+          }
+
+          const confirmedPost = normalizePostRow(
+            data as Record<string, unknown>
+          );
+
+          setPosts((prev) => {
+            const withoutTemp = prev.filter(
+              (p) => p.id !== tempId && p.id !== confirmedPost.id
+            );
+            return [confirmedPost, ...withoutTemp];
+          });
+
+          broadcastRef.current?.postMessage({
+            type: "NEW_POST",
+            post: confirmedPost,
+          });
+
+          toast.success(`Shared ${rootPost.author_name}'s post to your Wall!`);
+          return true;
+        } else {
+          const savedPost: WallPost = {
+            id: crypto.randomUUID(),
+            author_name: finalAuthor,
+            content: trimmedComment,
+            image_url: null,
+            created_at: new Date().toISOString(),
+            shared_post: rootPost,
+          };
+
+          setPosts((prev) => {
+            const next = [savedPost, ...prev.filter((p) => p.id !== tempId)];
+            saveLocalPosts(next);
+            return next;
+          });
+
+          broadcastRef.current?.postMessage({
+            type: "NEW_POST",
+            post: savedPost,
+          });
+
+          toast.success(`Shared ${rootPost.author_name}'s post to your Wall!`);
+          return true;
+        }
+      } catch (err) {
+        const message =
+          err instanceof Error ? err.message : "Could not share post.";
+        setPosts((prev) => prev.filter((p) => p.id !== tempId));
+        toast.error(message);
+        return false;
+      }
+    },
+    [connectionStatus]
+  );
+
   return {
     posts,
     isLoading,
@@ -344,6 +673,12 @@ export function useWallPosts() {
     connectionStatus,
     realtimeEventsCount,
     createPost,
+    sharePost,
+    shareCounts,
+    getCommentsForPost,
+    addComment,
+    deleteComment,
+    toggleCommentLike,
     refreshPosts: fetchPosts,
   };
 }
