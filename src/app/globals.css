@@ -1,0 +1,94 @@
+@import "tailwindcss";
+
+:root {
+  /* Emil Kowalski Spring Easing Palette */
+  --ease-spring-snappy: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-spring-bounce: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ease-spring-gentle: cubic-bezier(0.2, 0.9, 0.3, 1);
+  --ease-out-quick: cubic-bezier(0.4, 0, 1, 1);
+
+  /* Bespoke Editorial Surface & Brand Palette */
+  --brand-primary: #1d4ed8;
+  --brand-accent: #2563eb;
+  --surface-canvas: #f8fafc;
+  --surface-card: #ffffff;
+  --text-obsidian: #0b0f19;
+  --text-slate: #334155;
+  --text-muted: #64748b;
+}
+
+@keyframes post-enter {
+  0% {
+    opacity: 0;
+    transform: translateY(10px) scale(0.985);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.animate-post-enter {
+  animation: post-enter 0.32s var(--ease-spring-snappy) both;
+}
+
+/* Multi-layered compound surface card (Impeccable Design + Emil Kowalski depth) */
+.surface-card {
+  background: #ffffff;
+  border-radius: 16px;
+  box-shadow:
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.9),
+    0 0 0 1px rgba(15, 23, 42, 0.07),
+    0 2px 4px -1px rgba(15, 23, 42, 0.04),
+    0 8px 20px -4px rgba(15, 23, 42, 0.05);
+}
+
+.surface-card-interactive {
+  background: #ffffff;
+  border-radius: 16px;
+  box-shadow:
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.9),
+    0 0 0 1px rgba(15, 23, 42, 0.07),
+    0 2px 4px -1px rgba(15, 23, 42, 0.03),
+    0 6px 16px -4px rgba(15, 23, 42, 0.04);
+  transition:
+    transform 0.22s var(--ease-spring-snappy),
+    box-shadow 0.22s var(--ease-spring-snappy);
+}
+
+.surface-card-interactive:hover {
+  box-shadow:
+    inset 0 1px 0 0 rgba(255, 255, 255, 1),
+    0 0 0 1px rgba(37, 99, 235, 0.16),
+    0 4px 8px -2px rgba(15, 23, 42, 0.05),
+    0 12px 24px -6px rgba(15, 23, 42, 0.07);
+}
+
+/* Subtle architectural dot grid canvas */
+.bg-architectural-grid {
+  background-color: #f8fafc;
+  background-image:
+    radial-gradient(rgba(15, 23, 42, 0.055) 1px, transparent 1px),
+    radial-gradient(at 0% 0%, rgba(37, 99, 235, 0.045) 0px, transparent 50%),
+    radial-gradient(at 100% 0%, rgba(14, 165, 233, 0.04) 0px, transparent 50%);
+  background-size: 20px 20px, 100% 100%, 100% 100%;
+}
+
+body {
+  background-color: var(--surface-canvas);
+  color: var(--text-obsidian);
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
